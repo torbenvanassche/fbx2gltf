@@ -83,7 +83,7 @@ class FBXConverterApp:
     def __init__(self, root: tk.Tk):
         self.root = root
         self.root.title("FBX → GLB Converter")
-        self.root.geometry("680x520")
+        self.root.geometry("720x550")
 
         self.events = queue.Queue()
         self.convert_thread: threading.Thread | None = None
@@ -91,23 +91,19 @@ class FBXConverterApp:
         main = ttk.Frame(root, padding=10)
         main.pack(fill=tk.BOTH, expand=True)
 
-        # Top: Dependency button full-width
         self.dep_btn = ttk.Button(main, text="Check/Install Dependencies", command=self.handle_dependencies)
         self.dep_btn.grid(row=0, column=0, columnspan=3, pady=(0, 10), sticky="ew")
 
-        # Input
         ttk.Label(main, text="Input Folder:").grid(row=1, column=0, sticky="e")
         self.input_var = tk.StringVar(value=str(""))
         ttk.Entry(main, textvariable=self.input_var).grid(row=1, column=1, padx=5, pady=5, sticky="ew")
         ttk.Button(main, text="Browse", command=self.browse_input).grid(row=1, column=2)
 
-        # Output
         ttk.Label(main, text="Output Folder:").grid(row=2, column=0, sticky="e")
         self.output_var = tk.StringVar(value=str(""))
         ttk.Entry(main, textvariable=self.output_var).grid(row=2, column=1, padx=5, pady=5, sticky="ew")
         ttk.Button(main, text="Browse", command=self.browse_output).grid(row=2, column=2)
 
-        # Options
         opts = ttk.LabelFrame(main, text="Conversion Options", padding=10)
         opts.grid(row=3, column=0, columnspan=3, pady=10, sticky="ew")
         self.keep_materials_var = tk.BooleanVar(value=True)
@@ -115,24 +111,20 @@ class FBXConverterApp:
         self.remove_textures_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(opts, text="Remove Textures", variable=self.remove_textures_var).grid(row=0, column=1, sticky="w")
 
-        # Custom JSON
         ttk.Label(main, text="Custom Data (JSON):").grid(row=4, column=0, sticky="ne")
         self.custom_text = tk.Text(main, height=6)
         self.custom_text.grid(row=4, column=1, columnspan=2, pady=5, sticky="nsew")
 
-        # Insert default custom data
         default_data = {
             "origin": "origin_pack_name"
         }
         self.custom_text.insert("1.0", json.dumps(default_data, indent=4))
 
-        # Progress + status
         self.progress = ttk.Progressbar(main)
         self.progress.grid(row=5, column=0, columnspan=3, pady=10, sticky="ew")
         self.status_label = ttk.Label(main, text="Idle", anchor="center")
         self.status_label.grid(row=6, column=0, columnspan=3, sticky="ew")
 
-        # Bottom: Convert button full-width
         self.convert_btn = ttk.Button(main, text="Convert All FBX", command=self.start_conversion_thread)
         self.convert_btn.grid(row=7, column=0, columnspan=3, pady=15, sticky="ew")
 
@@ -145,9 +137,6 @@ class FBXConverterApp:
         # Start polling queue
         self.root.after(100, self.poll_events)
 
-    # -------------------------
-    # UI callbacks
-    # -------------------------
     def browse_input(self):
         folder = filedialog.askdirectory(initialdir=self.input_var.get())
         if folder:
@@ -179,9 +168,6 @@ class FBXConverterApp:
         self.convert_thread = threading.Thread(target=self.convert_all, daemon=True)
         self.convert_thread.start()
 
-    # -------------------------
-    # Worker
-    # -------------------------
     def convert_all(self):
         try:
             input_folder = Path(self.input_var.get())
@@ -201,7 +187,7 @@ class FBXConverterApp:
                     self.events.put(("done",))
                     return
 
-            fbx_files = sorted(list(input_folder.glob("*.fbx")))
+            fbx_files = sorted(list(input_folder.rglob("*.fbx")))
             if not fbx_files:
                 self.events.put(("info", "Info", "No FBX files found in input folder."))
                 self.events.put(("done",))
@@ -212,8 +198,18 @@ class FBXConverterApp:
             remove_textures = self.remove_textures_var.get()
 
             for i, fbx_file in enumerate(fbx_files, start=1):
-                glb_file = output_folder / (fbx_file.stem + ".glb")
-                self.events.put(("status", f"Processing {fbx_file.name} ({i}/{len(fbx_files)})"))
+                rel_path = fbx_file.relative_to(input_folder)
+
+                out_dir = output_folder / rel_path.parent
+                out_dir.mkdir(parents=True, exist_ok=True)
+
+                glb_file = out_dir / (fbx_file.stem + ".glb")
+
+                self.events.put((
+                    "status",
+                    f"Processing {rel_path.as_posix()} ({i}/{len(fbx_files)})"
+                ))
+
                 try:
                     convert_fbx_to_glb(
                         fbx_file,
@@ -222,6 +218,7 @@ class FBXConverterApp:
                         remove_textures=remove_textures,
                         custom_data=custom_data,
                     )
+
                 except subprocess.CalledProcessError as e:
                     self.events.put(("error", "Conversion failed", f"fbx2gltf failed for {fbx_file.name}:\n{e}"))
                 except Exception as e:
