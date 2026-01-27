@@ -41,12 +41,25 @@ def convert_fbx_to_glb(
     custom_data: dict | None = None,
     fbx2gltf_path: str = "fbx2gltf",
 ):
-    subprocess.run([
-        fbx2gltf_path,
-        "-i", str(fbx_path),
-        "-o", str(glb_path),
-        "--binary",
-    ], check=True)
+    creationflags = 0
+    startupinfo = None
+
+    if os.name == "nt":
+        creationflags = subprocess.CREATE_NO_WINDOW
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+
+    subprocess.run(
+        [
+            fbx2gltf_path,
+            "-i", str(fbx_path),
+            "-o", str(glb_path),
+            "--binary",
+        ],
+        check=True,
+        creationflags=creationflags,
+        startupinfo=startupinfo,
+    )
 
     from pygltflib import GLTF2
     gltf = GLTF2().load(str(glb_path))
